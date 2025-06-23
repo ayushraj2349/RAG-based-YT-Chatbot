@@ -1,0 +1,7 @@
+streamlit
+youtube-transcript-api
+langchain
+langchain-core
+langchain-community
+langchain-google-genai
+faiss-cpu
