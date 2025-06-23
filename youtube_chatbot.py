@@ -1,7 +1,6 @@
-
 import os
 import streamlit as st
-from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled
+from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, CouldNotRetrieveTranscript
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_community.vectorstores import FAISS
@@ -13,13 +12,14 @@ from langchain_core.output_parsers import StrOutputParser
 # Set Google API Key
 os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
 
-# Initialize the RAG system
-def init_rag_system(video_id, language="en"):
+# Initialize the RAG system with proxy support
+def init_rag_system(video_id, language="en", proxy=None):
     try:
-        # Get transcript
+        # Get transcript with optional proxy
         transcript_list = YouTubeTranscriptApi.get_transcript(
             video_id, 
-            languages=[language]
+            languages=[language],
+            proxies={'http': proxy, 'https': proxy} if proxy else None
         )
         transcript = " ".join(chunk["text"] for chunk in transcript_list)
         
@@ -69,10 +69,11 @@ def init_rag_system(video_id, language="en"):
         
         return rag_chain
         
-    except TranscriptsDisabled:
+    except (TranscriptsDisabled, CouldNotRetrieveTranscript) as e:
+        st.error(f"Transcript error: {str(e)}")
         return None
     except Exception as e:
-        st.error(f"Error: {str(e)}")
+        st.error(f"Unexpected error: {str(e)}")
         return None
 
 def main():
@@ -80,8 +81,16 @@ def main():
     st.subheader("Chat with any YouTube video using AI")
     
     # Video input
-    video_id = st.text_input("Enter YouTube Video ID:", placeholder="Gfr50f6ZBvo")
-    language = st.text_input("Language Code:", value="en", placeholder="en")
+    col1, col2 = st.columns(2)
+    with col1:
+        video_id = st.text_input("Enter YouTube Video ID:", placeholder="Gfr50f6ZBvo")
+    with col2:
+        language = st.text_input("Language Code:", value="en", placeholder="en")
+    
+    # Proxy input
+    proxy = st.text_input("Proxy (optional):", 
+                         placeholder="http://user:pass@host:port",
+                         help="Use proxy to avoid IP blocking. Format: http://[user:password@]hostname:port")
     
     if st.button("Process Video"):
         if not video_id:
@@ -89,10 +98,10 @@ def main():
             return
         
         with st.spinner("Processing video transcript..."):
-            rag_chain = init_rag_system(video_id, language)
+            rag_chain = init_rag_system(video_id, language, proxy)
             
             if rag_chain is None:
-                st.error("Failed to process video. Check if captions are available.")
+                st.error("Failed to process video. Try using a proxy if you see IP blocking errors.")
                 return
             
             st.session_state.rag_chain = rag_chain
